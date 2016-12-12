@@ -116,7 +116,7 @@ insertResults <- function(db, experimentName, regulatorName, figurePath, loglike
     return (db)
 }
 
-#' Insert figures
+#' Insert figure links
 #'
 #' @param db Database object created by \code{\link{initializeDb}}
 #' @param experimentName Experiment name
@@ -144,6 +144,42 @@ insertFigures <- function(db, experimentName, regulatorName, filename, name='', 
     tryCatch(experimentId <- db$experimentIds[[experimentName]],
              error = function(e) stop("Insert results for experiment before inserting figures."))
     .addFigures(db$db, experimentId, filename=filename, name=name, description=description, priority=priority, figureData=NULL)
+    return (db)
+}
+
+#' Insert figure data directly to the database
+#'
+#' @param db Database object created by \code{\link{initializeDb}}
+#' @param experimentName Experiment name
+#' @param regulatorName Regulator name (more detailed experiment identifier)
+#' @param filenames A list of file names of PNG figures.  names of the list
+#'   must correspond to the names of the entities the figures are for.
+#' @param name Optional figure name
+#' @param description Optional figure description
+#' @param priority Integer priority used for sorting figures (default: 0)
+#' @return An updated database object db
+#' @examples
+#'   db <- initializeDb("", "My Dataset")
+#'   logl <- c(-4.0, -2.0, 0.0)
+#'   names(logl) <- c("A", "B", "C")
+#'   baselogl <- c(1.0, -1.0, 4.0)
+#'   names(baselogl) <- names(logl)
+#'   db <- insertResults(db, "testexperiment", "testregulator", "",
+#'                       logl, baselineloglikelihoods=baselogl)
+#'   # Generate a dummy plot (reused for all data elements for simplicity)
+#'   examplefile <- tempfile("plot", fileext=".png")
+#'   png(examplefile)
+#'   plot(c(0, 1), c(0, 1))
+#'   dev.off()
+#'   figures <- list(A=examplefile, B=examplefile, C=examplefile)
+#'   db <- insertFigureData(db, "testexperiment", "testregulator",
+#'                          figures)
+#'   closeDb(db)
+#' @export
+insertFigureData <- function(db, experimentName, regulatorName, filenames, name='', description='', priority=0) {
+    tryCatch(experimentId <- db$experimentIds[[experimentName]],
+             error = function(e) stop("Insert results for experiment before inserting figures."))
+    .addFigures(db$db, experimentId, filename="", name=name, description=description, priority=priority, figureData=filenames)
     return (db)
 }
 

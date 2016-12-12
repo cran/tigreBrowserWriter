@@ -27,8 +27,8 @@
   return(db)
 }
 
-#' @importMethodsFrom RSQLite dbBegin dbGetPreparedQuery
-#' @importMethodsFrom DBI dbCommit dbConnect dbDisconnect dbGetQuery dbListTables
+#' @importMethodsFrom RSQLite dbBegin
+#' @importMethodsFrom DBI dbCommit dbConnect dbDisconnect dbExecute dbGetQuery dbListTables
 .createTables <- function(db) {
   tables <- cbind('CREATE TABLE genes (gene_id INTEGER PRIMARY KEY, probe_name VARCHAR,
 CONSTRAINT genes_u UNIQUE (probe_name) ON CONFLICT IGNORE)',
@@ -95,7 +95,7 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
 
   for (i in seq_along(tables)) {
     table <- tables[i]
-    dbGetQuery(db, table)
+    dbExecute(db, table)
   }
 
   dbGetQuery(db, paste("PRAGMA user_version = ", VERSION))
@@ -108,44 +108,38 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
 
 .addAndGetAliasId <- function(db, datasetId, aliasClass, source='', description='') {
   query <- paste("INSERT INTO alias_annotation",
-                 "VALUES (null, @did, @class, @source, @desc)")
-  dbGetPreparedQuery(db, query, data.frame(did = datasetId, class = aliasClass, source = source, desc = description))
+                 "VALUES (null, :did, :class, :source, :desc)")
+  dbExecute(db, query, params = list(did = datasetId, class = aliasClass, source = source, desc = description))
 
   alias_query <- paste("SELECT aa.alias_id",
                        "FROM alias_annotation AS aa",
-                       "WHERE aa.alias_class = @ac AND aa.dataset_id = @did")
-  alias_id <- dbGetPreparedQuery(db, alias_query, data.frame(ac = aliasClass, did = datasetId))
+                       "WHERE aa.alias_class = :ac AND aa.dataset_id = :did")
+  alias_id <- dbGetQuery(db, alias_query, params = list(ac = aliasClass, did = datasetId))
   return(alias_id[1,1])
 }
 
 .addAndGetProbeGeneIds <- function(db, probeNames) {
   insert_query <- paste("INSERT INTO genes",
-                        "VALUES (null, @probe)")
-
-  data <- as.data.frame(probeNames)
-  colnames(data) <- "probe"
-
-  dbBegin(db)
-  dbGetPreparedQuery(db, insert_query, data)
-  dbCommit(db)
+                        "VALUES (null, :probe)")
+  dbExecute(db, insert_query, params = list(probe=probeNames))
 
   query <- paste("SELECT g.probe_name, g.gene_id",
                  "FROM genes AS g",
-                 "WHERE g.probe_name IN (@probe_names)")
-  result <- dbGetPreparedQuery(db, query, data.frame(probe_names = probeNames))
+                 "WHERE g.probe_name IN (:probe_names)")
+  result <- dbGetQuery(db, query, params = list(probe_names = probeNames))
   return(result)
 }
 
 .getProbeGeneId <- function(db, probe) {
   query <- paste("SELECT g.gene_id",
                  "FROM genes AS g",
-                 "WHERE g.probe_name = @probe")
-  return(dbGetPreparedQuery(db, query, data.frame(probe = probe)))
+                 "WHERE g.probe_name = :probe")
+  return(dbGetQuery(db, query, params = list(probe = probe)))
 }
 
 .addAndGetRegulatorId <- function(db, regulatorName, datasetId) {
   insert_query <- paste("INSERT INTO regulators",
-                        "VALUES (null, @gene_id, @dataset_id, @regulator_name)")
+                        "VALUES (null, :gene_id, :dataset_id, :regulator_name)")
 
   gene_id <- .getProbeGeneId(db, regulatorName)
   if (nrow(gene_id) == 0) {
@@ -154,111 +148,110 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
     gene_id <- gene_id[1,1]
   }
 
-  dbGetPreparedQuery(db, insert_query, data.frame(gene_id = gene_id, dataset_id = datasetId, regulator_name = regulatorName))
+  dbExecute(db, insert_query, params = list(gene_id = gene_id, dataset_id = datasetId, regulator_name = regulatorName))
 
   query <- paste("SELECT r.regulator_id",
                  "FROM regulators AS r",
-                 "WHERE r.regulator_name = @regulator_name")
-  return(dbGetPreparedQuery(db, query, data.frame(regulator_name = regulatorName)))
+                 "WHERE r.regulator_name = :regulator_name")
+  regulator_id <- dbGetQuery(db, query, params = list(regulator_name = regulatorName))
+  return(regulator_id[1,1])
 }
 
 .addAndGetDatasetId <- function(db, name, species='', source='', platform='', description='', saveLocation='', figureFilename='') {
   query <- paste("INSERT INTO expression_dataset_annotation",
-                 "VALUES (null, @name, @species, @source, @platform, @desc, @save_location, @figure_filename)")
-  dbGetPreparedQuery(db, query, data.frame(name = name, species = species, source = source, platform = platform, desc = description, save_location = saveLocation, figure_filename = figureFilename))
+                 "VALUES (null, :name, :species, :source, :platform, :desc, :save_location, :figure_filename)")
+  dbExecute(db, query, params=list(name = name, species = species, source = source, platform = platform, desc = description, save_location = saveLocation, figure_filename = figureFilename))
 
   dataset_query <- paste("SELECT d.dataset_id",
                          "FROM expression_dataset_annotation AS d",
-                         "WHERE d.dataset_name = @dname")
-  dataset_id <- dbGetPreparedQuery(db, dataset_query, data.frame(dname = name))
+                         "WHERE d.dataset_name = :dname")
+  dataset_id <- dbGetQuery(db, dataset_query, params = list(dname = name))
   return(dataset_id[1,1])
 }
 
 .addAndGetExperimentId <- function(db, name, description, datasetId, regulatorId=NA, loopVariable=2, modelTranslation=FALSE, numberOfParameters=NA, parameterNames=NA, producer='', timestamp='') {
   insert_query <- paste("INSERT INTO experiment_annotation",
-                        "VALUES (null, @dataset_id, @regulator_id, @loop_variable, @model_translation, @number_of_parameters, @parameter_names, @producer, @timestamp, @description, @name)")
-  dbGetPreparedQuery(db, insert_query, data.frame(dataset_id = datasetId, regulator_id = regulatorId, loop_variable = loopVariable, model_translation = modelTranslation, number_of_parameters = numberOfParameters, parameter_names = parameterNames, producer = producer, timestamp = timestamp, description = description, name = name))
+                        "VALUES (null, :dataset_id, :regulator_id, :loop_variable, :model_translation, :number_of_parameters, :parameter_names, :producer, :timestamp, :description, :name)")
+  dbExecute(db, insert_query, params = list(dataset_id = datasetId, regulator_id = regulatorId, loop_variable = loopVariable, model_translation = modelTranslation, number_of_parameters = numberOfParameters, parameter_names = parameterNames, producer = producer, timestamp = timestamp, description = description, name = name))
 
   query <- paste("SELECT e.experiment_id",
                  "FROM experiment_annotation AS e",
-                 "WHERE e.name = @name AND e.dataset_id = @dataset_id AND e.regulator_id = @regulator_id AND e.loop_variable = @loop_variable AND e.model_translation = @model_translation")
-  experiment_id <- dbGetPreparedQuery(db, query, data.frame(name = name, dataset_id = datasetId, regulator_id = regulatorId, loop_variable = loopVariable, model_translation = modelTranslation))
+                 "WHERE e.name = :name AND e.dataset_id = :dataset_id AND e.regulator_id = :regulator_id AND e.loop_variable = :loop_variable AND e.model_translation = :model_translation")
+  experiment_id <- dbGetQuery(db, query, params = list(name = name, dataset_id = datasetId, regulator_id = regulatorId, loop_variable = loopVariable, model_translation = modelTranslation))
   return(experiment_id[1,1])
 }
 
 .addAndGetFigureId <- function(db, filename, name='', description='', priority=0) {
   insert_query <- paste("INSERT INTO figure_annotation",
-                        "VALUES (null, @filename, @name, @description, @priority)")
-  dbGetPreparedQuery(db, insert_query, data.frame(filename = filename, name = name, description = description, priority = priority))
+                        "VALUES (null, :filename, :name, :description, :priority)")
+  dbExecute(db, insert_query, params = list(filename = filename, name = name, description = description, priority = priority))
 
   query <- paste("SELECT f.figure_id",
                  "FROM figure_annotation AS f",
-                 "WHERE f.filename = @filename AND f.name = @name")
-  figure_id <- dbGetPreparedQuery(db, query, data.frame(filename = filename, name = name))
+                 "WHERE f.filename = :filename AND f.name = :name")
+  figure_id <- dbGetQuery(db, query, params = list(filename = filename, name = name))
   return(figure_id[1,1])
 }
 
 .addAndGetSupplementaryDataId <- function(db, name, regulatorId=NA, type=0, source='', platform='', description='') {
   insert_query <- paste("INSERT INTO supplementary_dataset_annotation",
-                        "VALUES (null, @type, @name, @regulator_id, @source, @platform, @description)")
-  dbGetPreparedQuery(db, insert_query, data.frame(type = type, name = name, regulator_id = regulatorId, source = source, platform = platform, description = description))
+                        "VALUES (null, :type, :name, :regulator_id, :source, :platform, :description)")
+  dbExecute(db, insert_query, params = list(type = type, name = name, regulator_id = regulatorId, source = source, platform = platform, description = description))
 
   if (is.na(regulatorId)) {
       query <- paste("SELECT s.supp_dataset_id",
                      "FROM supplementary_dataset_annotation AS s",
-                     "WHERE s.supp_dataset_name = @name")
-      supp_id <- dbGetPreparedQuery(db, query, data.frame(name = name))
+                     "WHERE s.supp_dataset_name = :name")
+      supp_id <- dbGetQuery(db, query, params = list(name = name))
   } else {
       query <- paste("SELECT s.supp_dataset_id",
                      "FROM supplementary_dataset_annotation AS s",
-                     "WHERE s.supp_dataset_name = @name AND s.regulator_id = @regulator_id")
-      supp_id <- dbGetPreparedQuery(db, query, data.frame(name = name, regulator_id = regulatorId))
+                     "WHERE s.supp_dataset_name = :name AND s.regulator_id = :regulator_id")
+      supp_id <- dbGetQuery(db, query, params = list(name = name, regulator_id = regulatorId))
   }
   return(supp_id[1,1])
 }
 
 .addAndGetExperimentSetId <- function(db, name, parentId) {
   insert_query <- paste("INSERT INTO experiment_set",
-                        "VALUES (null, @parent_id, @name)")
-  dbGetPreparedQuery(db, insert_query, data.frame(parent_id = parentId, name = name))
+                        "VALUES (null, :parent_id, :name)")
+  dbExecute(db, insert_query, params = list(parent_id = parentId, name = name))
 
   query <- paste("SELECT s.experiment_set_id",
                  "FROM experiment_set AS s",
-                 "WHERE s.name = @name")
-  set_id <- dbGetPreparedQuery(db, query, data.frame(name = name, parent_id = parentId))
+                 "WHERE s.name = :name")
+  set_id <- dbGetQuery(db, query, params = list(name = name))
   return(set_id[1,1])
 }
 
 .addExperimentSetExperiments <- function(db, setId, experimentIds) {
   insert_query <- paste("INSERT INTO experiment_set_experiments",
-                        "VALUES (@set_id, @experiment_id)")
-  data <- as.data.frame(cbind(setId, experimentIds))
-  names(data) <- cbind("set_id", "experiment_id")
-  dbGetPreparedQuery(db, insert_query, data)
+                        "VALUES (:set_id, :experiment_id)")
+  dbExecute(db, insert_query, params = list(set_id = setId, experiment_id = experimentIds))
 }
 
 .addSupplementaryData <- function(db, suppDatasetId, suppData) {
   insert_query <- paste("INSERT INTO supplementary_data",
-                        "VALUES (@gene_id, @supp_id, @value)")
+                        "VALUES (:gene_id, :supp_id, :value)")
 
   probes <- names(suppData)
   probe_gene_ids <- .addAndGetProbeGeneIds(db, probes)
   data <- as.data.frame(cbind(probe_gene_ids, suppDatasetId, suppData))
   data <- data[2:4] # remove probe_name column
   names(data) <- cbind("gene_id", "supp_id", "value")
-  dbGetPreparedQuery(db, insert_query, data)
+  dbExecute(db, insert_query, params = as.list(data))
 }
 
 .addFigures <- function(db, experimentId, filename, name='', description='', priority=0, figureData=NULL) {
   insert_query <- paste("INSERT INTO figures",
-                        "VALUES (@experiment_id, @figure_id)")
+                        "VALUES (:experiment_id, :figure_id)")
 
   figure_id <- .addAndGetFigureId(db, filename, name, description, priority)
-  dbGetPreparedQuery(db, insert_query, data.frame(experiment_id = experimentId, figure_id = figure_id))
+  dbExecute(db, insert_query, params = list(experiment_id = experimentId, figure_id = figure_id))
 
   if (length(figureData) > 0) {
     insert_query <- paste("INSERT INTO figuredata",
-                          "VALUES (@figure_id, @gene_id, @data)")
+                          "VALUES (:figure_id, :gene_id, :data)")
 
     probes <- names(figureData)
     probe_gene_ids <- .addAndGetProbeGeneIds(db, probes)
@@ -275,13 +268,13 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
     }
 
     names(data) <- cbind("figure_id", "gene_id", "data")
-    dbGetPreparedQuery(db, insert_query, data)
+    dbExecute(db, insert_query, params = as.list(data))
   }
 }
 
 .addResults <- function(db, experimentId, logLikelihoods, baselineLogLikelihoods=NA, params=NA) {
   insert_query <- paste("INSERT INTO results",
-                        "VALUES (@gene_id, @experiment_id, @log_likelihood, @baseline_log_likelihood, @params)")
+                        "VALUES (:gene_id, :experiment_id, :log_likelihood, :baseline_log_likelihood, :params)")
   probes <- names(logLikelihoods)
   probe_gene_ids <- .addAndGetProbeGeneIds(db, probes)
   if (is.na(params)) {
@@ -291,36 +284,36 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
   }
   data <- data[2:6] # remove probe_name column
   names(data) <- cbind("gene_id", "experiment_id", "log_likelihood", "baseline_log_likelihood", "params")
-  dbGetPreparedQuery(db, insert_query, data)
+  dbExecute(db, insert_query, params = as.list(data))
 }
 
 .addGeneAliases <- function(db, aliasId, geneId, aliasList) {
   insert_query <- paste("INSERT INTO gene_aliases",
-                        "VALUES (@gene_id, @alias_id, @alias)")
+                        "VALUES (:gene_id, :alias_id, :alias)")
   for (alias in aliasList) {
-    dbGetPreparedQuery(db, insert_query, data.frame(gene_id = geneId, alias_id = aliasId, alias = alias))
+    dbExecute(db, insert_query, params = list(gene_id = geneId, alias_id = aliasId, alias = alias))
   }
 }
 
 .addZscores <- function(db, datasetId, zscores) {
   insert_query <- paste("INSERT INTO z_scores",
-                        "VALUES (@gene_id, @dataset_id, @zscore)")
+                        "VALUES (:gene_id, :dataset_id, :zscore)")
   probes <- names(zscores)
   probe_gene_ids <- .addAndGetProbeGeneIds(db, probes)
   data <- as.data.frame(cbind(probe_gene_ids, datasetId, zscores))
   data <- data[2:4] # remove probe_name column
   names(data) <- cbind("gene_id", "dataset_id", "zscore")
-  dbGetPreparedQuery(db, insert_query, data)
+  dbExecute(db, insert_query, params = as.list(data))
 }
 
 .addTargetSet <- function(db, experimentId, probes) {
   insert_query <- paste("INSERT INTO target_sets",
-                        "VALUES (@experiment_id, @gene_id)")
+                        "VALUES (:experiment_id, :gene_id)")
   probe_gene_ids <- .addAndGetProbeGeneIds(db, probes)
   data <- as.data.frame(cbind(experimentId, probe_gene_ids))
   data <- data[c(1,3)] # remove probe_name column
   names(data) <- cbind("experiment_id", "gene_id")
-  dbGetPreparedQuery(db, insert_query, data)
+  dbExecute(db, insert_query, as.list(data))
 }
 
 .getLoopVariables <- function(db) {
@@ -330,5 +323,3 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
   loopVariables <- dbGetQuery(db, query)$loop_variable
   return(loopVariables)
 }
-
-
