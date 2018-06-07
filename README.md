@@ -14,6 +14,10 @@ https://www.cs.helsinki.fi/u/ahonkela/pol2rna/
 
 ## History
 
+Version 0.1.5 (7 June 2018)
+
+* Eliminate an RSQLite warning message
+
 Version 0.1.4 (4 December 2016)
 
 * Compatibility update with new RSQLite

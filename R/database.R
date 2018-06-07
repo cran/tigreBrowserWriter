@@ -98,7 +98,7 @@ CONSTRAINT supplementary_dataset_annotation_r_f FOREIGN KEY (regulator_id) REFER
     dbExecute(db, table)
   }
 
-  dbGetQuery(db, paste("PRAGMA user_version = ", VERSION))
+  dbExecute(db, paste("PRAGMA user_version = ", VERSION))
   return(TRUE)
 }
 
